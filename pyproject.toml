@@ -10,7 +10,8 @@ dependencies = [
     "dagster (>=1.12.17,<2.0.0)",
     "dagster-dbt (>=0.28.17,<0.29.0)",
     "dagster-duckdb (>=0.28.17,<0.29.0)",
-    "pandas (>=3.0.1,<4.0.0)"
+    "pandas (>=3.0.1,<4.0.0)",
+    "dagster-webserver (>=1.12.17,<2.0.0)"
 ]
 
 
