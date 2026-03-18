@@ -1,10 +1,11 @@
 """
-Assets to pull data from the demo API end points
+Assets to pull data from the demo API endpoints
 """
 
 import dagster as dg
 import io
 import pandas as pd
+from dagster_duckdb import DuckDBResource
 
 from ..resources import DHIS2Resource
 
@@ -20,11 +21,49 @@ class AnalyticsConfig(dg.Config):
 
 
 @dg.asset(description="Fetches all organisation units from the DHIS2 API")
-def raw_org_units(context: dg.AssetExecutionContext, dhis2: DHIS2Resource) -> dict:
+def raw_org_units(
+    context: dg.AssetExecutionContext,
+    dhis2: DHIS2Resource,
+    duckdb: DuckDBResource,
+) -> None:
     # load org units as json file
-    orgunits = dhis2.get_dhis2_json(ORG_UNITS_ENDPOINT, params={"paging": False})
+    orgunits = dhis2.get_dhis2_json(
+        ORG_UNITS_ENDPOINT,
+        params={"fields": "id,name,code,parent,level,geometry", "paging": False},
+    )
     context.log.info(f"Fetched {len(orgunits['organisationUnits'])} org units")
-    return orgunits
+
+    # format for duckdb
+    df = pd.DataFrame(orgunits["organisationUnits"])
+    df["loaded_at"] = pd.Timestamp.now()
+    context.log.info("Table ready")
+
+    # insert to db table
+    with duckdb.get_connection() as conn:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS raw.organisation_units 
+            AS SELECT * FROM df WHERE 1=0
+        """)
+
+        # alter for orgunit primary key
+        pk_exists = conn.execute("""
+                SELECT COUNT(*) FROM duckdb_constraints() 
+                WHERE table_name = 'organisation_units' 
+                AND constraint_type = 'PRIMARY KEY'
+            """).fetchone()[0]
+
+    if not pk_exists:
+        conn.execute("ALTER TABLE raw.organisation_units ADD PRIMARY KEY (id)")
+
+        # NOTE: deduplicating here, because the pk isn't complex compared to dataelements
+        conn.execute("""
+            INSERT INTO raw.organisation_units
+            SELECT * FROM df
+            ON CONFLICT (id) DO NOTHING
+        """)
+
+    context.log.info("Loaded into raw.organisation_units")
 
 
 @dg.asset(description="Fetches analytics data from the DHIS2 API.")
@@ -32,7 +71,8 @@ def raw_analytics(
     context: dg.AssetExecutionContext,
     config: AnalyticsConfig,
     dhis2: DHIS2Resource,
-) -> pd.DataFrame:
+    duckdb: DuckDBResource,
+) -> None:
     # fetch dataelement csv
     csv_text = dhis2.get_dhis2_csv(
         ANALYTICS_ENDPOINT,
@@ -47,4 +87,17 @@ def raw_analytics(
     )
     df = pd.read_csv(io.StringIO(csv_text))
     context.log.info(f"Fetched {len(df)} rows")
-    return df
+
+    df["loaded_at"] = pd.Timestamp.now()
+
+    # load to db
+    with duckdb.get_connection() as conn:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS raw.analytics AS 
+            SELECT * FROM df WHERE 1=0
+        """)
+        # NOTE: Duplicates are ok here, since its the raw table
+        conn.execute("INSERT INTO raw.analytics SELECT * FROM df")
+
+    context.log.info(f"Loaded {len(df)} rows into raw.analytics")

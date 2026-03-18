@@ -55,3 +55,4 @@ MANIFEST
 
 .env
 .tmp*/
+*.db
