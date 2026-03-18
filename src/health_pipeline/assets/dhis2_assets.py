@@ -1,5 +1,5 @@
 """
-Assets to pull data from the demo API end points
+Assets to pull data from the demo API endpoints
 """
 
 import dagster as dg
@@ -38,12 +38,16 @@ def raw_org_units(
     df["loaded_at"] = pd.Timestamp.now()
     context.log.info("Table ready")
 
+    # insert to db table
     with duckdb.get_connection() as conn:
         conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS raw.organisation_units 
             AS SELECT * FROM df WHERE 1=0
         """)
+
+        # alter for orgunit primary key
+        # NOTE: deduplicating here, because the pk isn't complex compared to dataelements
         pk_exists = conn.execute("""
                 SELECT COUNT(*) FROM duckdb_constraints() 
                 WHERE table_name = 'organisation_units' 
@@ -59,8 +63,7 @@ def raw_org_units(
             ON CONFLICT (id) DO NOTHING
         """)
 
-    # TODO should be more accurace, picking rather from raw table
-    context.log.info(f"Loaded {len(df)} rows into raw.organisation_units")
+    context.log.info("Loaded into raw.organisation_units")
 
 
 @dg.asset(description="Fetches analytics data from the DHIS2 API.")
@@ -94,6 +97,7 @@ def raw_analytics(
             CREATE TABLE IF NOT EXISTS raw.analytics AS 
             SELECT * FROM df WHERE 1=0
         """)
+        # NOTE: Duplicates are ok here, since its the raw table
         conn.execute("INSERT INTO raw.analytics SELECT * FROM df")
 
     context.log.info(f"Loaded {len(df)} rows into raw.analytics")

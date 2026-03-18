@@ -4,8 +4,8 @@
 
 This repo contains code for a DHIS2 → DuckDB data pipeline as follows:
 
-- **API connection**, to extract data from the DHIS2 REST API
-- **Data loading**, to persist raw data into DuckDB
+- **API connection**, to extract data from the DHIS2 Demo API
+- **Data loading**, to store raw data into DuckDB
 - **Transformations**, to clean and model data using dbt
 
 ## Setting Up
