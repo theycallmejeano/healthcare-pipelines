@@ -47,7 +47,6 @@ def raw_org_units(
         """)
 
         # alter for orgunit primary key
-        # NOTE: deduplicating here, because the pk isn't complex compared to dataelements
         pk_exists = conn.execute("""
                 SELECT COUNT(*) FROM duckdb_constraints() 
                 WHERE table_name = 'organisation_units' 
@@ -57,6 +56,7 @@ def raw_org_units(
     if not pk_exists:
         conn.execute("ALTER TABLE raw.organisation_units ADD PRIMARY KEY (id)")
 
+        # NOTE: deduplicating here, because the pk isn't complex compared to dataelements
         conn.execute("""
             INSERT INTO raw.organisation_units
             SELECT * FROM df
